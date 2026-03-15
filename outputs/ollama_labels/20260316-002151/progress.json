@@ -1,0 +1,11 @@
+{
+  "completed": 3,
+  "total": 3,
+  "success_count": 3,
+  "error_count": 0,
+  "inflight_count": 0,
+  "rows_per_sec_wall": 31.881544,
+  "elapsed_sec": 0.094,
+  "eta_sec": 0.0,
+  "updated_at_epoch": 1773595328.843
+}

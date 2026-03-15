@@ -283,6 +283,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit-rows", type=int, default=env_or_default("LABEL_LIMIT_ROWS", None, int) if os.getenv("LABEL_LIMIT_ROWS") else None, help="Optional hard cap before sampling.")
     parser.add_argument("--start-row", type=int, default=env_or_default("LABEL_START_ROW", 0, int), help="Optional start row before sampling.")
     parser.add_argument("--base-url", default=env_or_default("OLLAMA_BASE_URL", "http://localhost:11434/api/chat"), help="Ollama chat endpoint.")
+    parser.add_argument("--resume-dir", type=Path, default=None, help="Resume an existing run directory.")
+    parser.add_argument("--retries", type=int, default=env_or_default("LABEL_RETRIES", 2, int), help="Retries per row on transient or parse failures.")
+    parser.add_argument("--heartbeat-sec", type=int, default=env_or_default("LABEL_HEARTBEAT_SEC", 30, int), help="Heartbeat interval in seconds.")
+    parser.add_argument("--max-review-chars", type=int, default=env_or_default("LABEL_MAX_REVIEW_CHARS", 1200, int), help="Truncate review text before prompting; 0 disables truncation.")
+    parser.add_argument("--fast-mode", action="store_true", help="Skip heavy debug fields such as raw model content.")
     return parser.parse_args()
 
 
@@ -362,6 +367,13 @@ def unique_keep_order(values: list[str]) -> list[str]:
             seen.add(value)
             output.append(value)
     return output
+
+
+def truncate_review_text(review_text: str, max_chars: int) -> str:
+    if max_chars <= 0 or len(review_text) <= max_chars:
+        return review_text
+    truncated = review_text[:max_chars].rstrip()
+    return truncated + "\n\n[TRUNCATED]"
 
 
 def normalize_list(values: Any, allowed: list[str] | None = None) -> list[str]:
@@ -867,8 +879,10 @@ def post_process(parsed: dict[str, Any], row: ReviewRow, rule_labels: RuleExtrac
 
 
 def process_row(args: argparse.Namespace, row: ReviewRow) -> dict[str, Any]:
-    rule_labels = extract_rule_labels(row)
-    prompt = build_prompt(row.review_text, rule_labels)
+    prompt_review_text = truncate_review_text(row.review_text, args.max_review_chars)
+    prompt_row = ReviewRow(row_id=row.row_id, review_text=prompt_review_text, rating=row.rating)
+    rule_labels = extract_rule_labels(prompt_row)
+    prompt = build_prompt(prompt_review_text, rule_labels)
     parsed, raw_response, elapsed = call_ollama(args, prompt)
     record = post_process(parsed, row, rule_labels)
     runtime_metrics = extract_runtime_metrics(raw_response, elapsed)
@@ -876,9 +890,12 @@ def process_row(args: argparse.Namespace, row: ReviewRow) -> dict[str, Any]:
     record["timing"] = runtime_metrics["timing"]
     record["token_usage"] = runtime_metrics["token_usage"]
     record["throughput"] = runtime_metrics["throughput"]
+    record["prompt_review_chars"] = len(prompt_review_text)
+    record["review_truncated"] = len(prompt_review_text) != len(row.review_text)
     record["model"] = args.model
     record["prompt_version"] = "v2_rule_first_hybrid"
-    record["raw_model_content"] = raw_response["message"]["content"]
+    if not args.fast_mode:
+        record["raw_model_content"] = raw_response["message"]["content"]
     record["done_reason"] = raw_response.get("done_reason")
     record["eval_notes"] = []
     return record
@@ -892,6 +909,44 @@ def build_error_record(row: ReviewRow, exc: Exception) -> dict[str, Any]:
         "review_rating": row.rating,
         "error": f"{type(exc).__name__}: {exc}",
     }
+
+
+def load_jsonl_records(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    records: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return records
+
+
+def append_jsonl_record(path: Path, record: dict[str, Any]) -> None:
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def process_row_with_retries(args: argparse.Namespace, row: ReviewRow) -> dict[str, Any]:
+    attempts = args.retries + 1
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            record = process_row(args, row)
+            record["attempt"] = attempt
+            return record
+        except (json.JSONDecodeError, KeyError, urllib.error.URLError, TimeoutError, OSError, RuntimeError) as exc:
+            last_exc = exc
+            if attempt >= attempts:
+                break
+            time.sleep(min(2 * attempt, 10))
+    assert last_exc is not None
+    raise last_exc
 
 
 def sample_rows(rows: list[ReviewRow], sample_size: int, seed: int) -> list[ReviewRow]:
@@ -1020,7 +1075,7 @@ def write_preview_csv(path: Path, records: list[dict[str, Any]]) -> None:
             )
 
 
-def summarize(records: list[dict[str, Any]], errors: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, Any]:
+def summarize(records: list[dict[str, Any]], errors: list[dict[str, Any]], args: argparse.Namespace, requested_rows: int | None = None) -> dict[str, Any]:
     latencies = [record["latency_sec"] for record in records if "latency_sec" in record]
     prompt_tokens = [record.get("token_usage", {}).get("prompt_tokens") for record in records if record.get("token_usage", {}).get("prompt_tokens") is not None]
     completion_tokens = [record.get("token_usage", {}).get("completion_tokens") for record in records if record.get("token_usage", {}).get("completion_tokens") is not None]
@@ -1032,7 +1087,8 @@ def summarize(records: list[dict[str, Any]], errors: list[dict[str, Any]], args:
         "model": args.model,
         "input": str(args.input),
         "base_url": args.base_url,
-        "sample_size": len(records) + len(errors),
+        "requested_rows": requested_rows if requested_rows is not None else len(records) + len(errors),
+        "processed_rows": len(records) + len(errors),
         "success_count": len(records),
         "error_count": len(errors),
         "parallel": args.parallel,
@@ -1150,6 +1206,36 @@ def write_perf_rows_csv(path: Path, records: list[dict[str, Any]]) -> None:
             )
 
 
+def build_progress_snapshot(
+    total_rows: int,
+    successes: list[dict[str, Any]],
+    errors: list[dict[str, Any]],
+    inflight_count: int,
+    run_started_at: float,
+) -> dict[str, Any]:
+    completed = len(successes) + len(errors)
+    elapsed = max(time.time() - run_started_at, 0.001)
+    rows_per_sec = completed / elapsed if completed else 0.0
+    remaining = max(total_rows - completed, 0)
+    eta_sec = round(remaining / rows_per_sec, 3) if rows_per_sec > 0 else None
+    return {
+        "completed": completed,
+        "total": total_rows,
+        "success_count": len(successes),
+        "error_count": len(errors),
+        "inflight_count": inflight_count,
+        "rows_per_sec_wall": round(rows_per_sec, 6),
+        "elapsed_sec": round(elapsed, 3),
+        "eta_sec": eta_sec,
+        "updated_at_epoch": round(time.time(), 3),
+    }
+
+
+def write_progress_json(path: Path, snapshot: dict[str, Any]) -> None:
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(snapshot, handle, ensure_ascii=False, indent=2)
+
+
 def main() -> int:
     args = parse_args()
     if args.parallel < 1:
@@ -1165,40 +1251,14 @@ def main() -> int:
         return 2
 
     sampled = sample_rows(rows, args.sample_size, args.seed)
-    timestamp = time.strftime("%Y%m%d-%H%M%S")
-    run_dir = args.output_dir / timestamp
-    run_dir.mkdir(parents=True, exist_ok=True)
+    if args.resume_dir is not None:
+        run_dir = args.resume_dir
+        run_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        run_dir = args.output_dir / timestamp
+        run_dir.mkdir(parents=True, exist_ok=True)
     run_started_at = time.time()
-
-    successes: list[dict[str, Any]] = []
-    errors: list[dict[str, Any]] = []
-    lock = threading.Lock()
-
-    print(f"Loaded {len(rows)} candidate rows; labeling {len(sampled)} rows with {args.model}")
-    print(f"Output directory: {run_dir}")
-
-    with ThreadPoolExecutor(max_workers=args.parallel) as executor:
-        future_map = {executor.submit(process_row, args, row): row for row in sampled}
-        for index, future in enumerate(as_completed(future_map), start=1):
-            row = future_map[future]
-            try:
-                result = future.result()
-            except (json.JSONDecodeError, KeyError, urllib.error.URLError, TimeoutError, OSError, RuntimeError) as exc:
-                error_record = build_error_record(row, exc)
-                with lock:
-                    errors.append(error_record)
-                print(f"[{index}/{len(sampled)}] row={row.row_id} ERROR {error_record['error']}")
-                continue
-            with lock:
-                successes.append(result)
-            print(
-                f"[{index}/{len(sampled)}] row={row.row_id} "
-                f"ok latency={result['latency_sec']:.3f}s "
-                f"rating={result['review_rating']}"
-            )
-
-    successes.sort(key=lambda item: item["row_id"])
-    errors.sort(key=lambda item: item["row_id"])
 
     labels_path = run_dir / "labels.jsonl"
     errors_path = run_dir / "errors.jsonl"
@@ -1207,13 +1267,80 @@ def main() -> int:
     perf_rows_path = run_dir / "perf_rows.csv"
     config_path = run_dir / "run_config.json"
     preview_path = run_dir / "preview.csv"
+    progress_path = run_dir / "progress.json"
 
-    write_jsonl(labels_path, successes)
-    write_jsonl(errors_path, errors)
+    successes = load_jsonl_records(labels_path)
+    errors = load_jsonl_records(errors_path)
+    processed_ids = {record.get("row_id") for record in successes + errors if record.get("row_id") is not None}
+    pending_rows = [row for row in sampled if row.row_id not in processed_ids]
+
+    lock = threading.Lock()
+    inflight: dict[int, float] = {}
+    stop_heartbeat = threading.Event()
+
+    print(f"Loaded {len(rows)} candidate rows; labeling {len(sampled)} rows with {args.model}")
+    print(f"Output directory: {run_dir}")
+    if processed_ids:
+        print(f"Resuming run with {len(processed_ids)} rows already processed; {len(pending_rows)} rows remaining")
+
+    def heartbeat_loop() -> None:
+        while not stop_heartbeat.wait(args.heartbeat_sec):
+            with lock:
+                snapshot = build_progress_snapshot(len(sampled), successes, errors, len(inflight), run_started_at)
+                write_progress_json(progress_path, snapshot)
+            eta_text = f"{snapshot['eta_sec']}s" if snapshot["eta_sec"] is not None else "unknown"
+            print(
+                f"[heartbeat] completed={snapshot['completed']}/{snapshot['total']} "
+                f"ok={snapshot['success_count']} err={snapshot['error_count']} "
+                f"inflight={snapshot['inflight_count']} rps={snapshot['rows_per_sec_wall']} eta={eta_text}"
+            )
+
+    heartbeat_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+    heartbeat_thread.start()
+
+    interrupted = False
+    try:
+        with ThreadPoolExecutor(max_workers=args.parallel) as executor:
+            future_map = {}
+            for row in pending_rows:
+                inflight[row.row_id] = time.time()
+                future_map[executor.submit(process_row_with_retries, args, row)] = row
+            for index, future in enumerate(as_completed(future_map), start=1):
+                row = future_map[future]
+                try:
+                    result = future.result()
+                except (json.JSONDecodeError, KeyError, urllib.error.URLError, TimeoutError, OSError, RuntimeError) as exc:
+                    error_record = build_error_record(row, exc)
+                    with lock:
+                        errors.append(error_record)
+                        inflight.pop(row.row_id, None)
+                        append_jsonl_record(errors_path, error_record)
+                        write_progress_json(progress_path, build_progress_snapshot(len(sampled), successes, errors, len(inflight), run_started_at))
+                    print(f"[{index}/{len(sampled)}] row={row.row_id} ERROR {error_record['error']}")
+                    continue
+                with lock:
+                    successes.append(result)
+                    inflight.pop(row.row_id, None)
+                    append_jsonl_record(labels_path, result)
+                    write_progress_json(progress_path, build_progress_snapshot(len(sampled), successes, errors, len(inflight), run_started_at))
+                print(
+                    f"[{index}/{len(sampled)}] row={row.row_id} "
+                    f"ok latency={result['latency_sec']:.3f}s "
+                    f"rating={result['review_rating']}"
+                )
+    except KeyboardInterrupt:
+        interrupted = True
+        print("\nInterrupted. Progress has been checkpointed; resume with --resume-dir.")
+
+    stop_heartbeat.set()
+    heartbeat_thread.join(timeout=1)
+
+    successes.sort(key=lambda item: item["row_id"])
+    errors.sort(key=lambda item: item["row_id"])
     write_preview_csv(preview_path, successes)
     write_perf_rows_csv(perf_rows_path, successes)
 
-    summary = summarize(successes, errors, args)
+    summary = summarize(successes, errors, args, requested_rows=len(sampled))
     perf_report = build_perf_report(successes, errors, args, run_started_at, time.time())
     with summary_path.open("w", encoding="utf-8") as handle:
         json.dump(summary, handle, ensure_ascii=False, indent=2)
@@ -1234,6 +1361,7 @@ def main() -> int:
             indent=2,
             default=str,
         )
+    write_progress_json(progress_path, build_progress_snapshot(len(sampled), successes, errors, 0, run_started_at))
 
     print("")
     print("Run summary")
@@ -1242,8 +1370,11 @@ def main() -> int:
     print(f"preview: {preview_path}")
     print(f"errors:  {errors_path}")
     print(f"summary: {summary_path}")
+    print(f"progress:{progress_path}")
     print(f"perf:    {perf_report_path}")
     print(f"perfrow: {perf_rows_path}")
+    if interrupted:
+        return 130
     return 0 if not errors else 1
 
 

@@ -1,0 +1,25 @@
+{
+  "input": "wongnai-review-dataset\\review_dataset\\w_review_train.csv",
+  "output_dir": "outputs\\ollama_labels",
+  "model": "scb10x/typhoon2.5-qwen3-4b",
+  "sample_size": 3,
+  "seed": 42,
+  "parallel": 2,
+  "temperature": 0.0,
+  "num_ctx": 1024,
+  "timeout": 600,
+  "keep_alive": "30m",
+  "limit_rows": 20,
+  "start_row": 0,
+  "base_url": "http://localhost:11434/api/chat",
+  "resume_dir": "outputs\\ollama_labels\\20260316-002151",
+  "retries": 2,
+  "heartbeat_sec": 1,
+  "max_review_chars": 1200,
+  "fast_mode": true,
+  "host_runtime": {
+    "hostname": "DataCooking",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.13.1"
+  }
+}

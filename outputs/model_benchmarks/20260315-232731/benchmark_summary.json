@@ -1,0 +1,35 @@
+{
+  "benchmark_dir": "outputs\\model_benchmarks\\20260315-232731",
+  "models": [
+    "scb10x/typhoon2.5-qwen3-4b"
+  ],
+  "sample_size": 2,
+  "limit_rows": 20,
+  "seed": 42,
+  "parallel": 2,
+  "num_ctx": 2048,
+  "notes": [
+    "Fastest wall-clock throughput: scb10x/typhoon2.5-qwen3-4b at 0.321854 rows/sec.",
+    "Lowest average latency: scb10x/typhoon2.5-qwen3-4b at 5.16 sec/row."
+  ],
+  "results": [
+    {
+      "model": "scb10x/typhoon2.5-qwen3-4b",
+      "return_code": 0,
+      "run_dir": "outputs\\model_benchmarks\\20260315-232731\\scb10x__typhoon2.5-qwen3-4b\\20260315-232731",
+      "wall_time_sec": 6.461,
+      "success_rows": 2,
+      "error_rows": 0,
+      "latency_avg_sec": 5.16,
+      "latency_median_sec": 5.16,
+      "latency_max_sec": 6.208,
+      "prompt_tokens_total": 2193,
+      "completion_tokens_total": 358,
+      "all_tokens_total": 2551,
+      "completion_tokens_per_sec_run": 102.956698,
+      "all_tokens_per_sec_run": 410.949525,
+      "successful_rows_per_sec_wall": 0.321854,
+      "all_tokens_per_sec_wall": 410.524622
+    }
+  ]
+}

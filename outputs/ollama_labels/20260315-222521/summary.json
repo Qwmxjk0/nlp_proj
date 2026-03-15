@@ -1,0 +1,20 @@
+{
+  "model": "scb10x/typhoon2.5-qwen3-4b",
+  "input": "wongnai-review-dataset\\review_dataset\\w_review_train.csv",
+  "sample_size": 2,
+  "success_count": 0,
+  "error_count": 2,
+  "parallel": 2,
+  "temperature": 0.0,
+  "num_ctx": 2048,
+  "keep_alive": "-1",
+  "latency_avg_sec": null,
+  "latency_median_sec": null,
+  "latency_max_sec": null,
+  "rows_with_restaurant_name": 0,
+  "rows_with_food_nationality": 0,
+  "rows_with_food_type": 0,
+  "rows_with_ambience": 0,
+  "rows_with_price_level": 0,
+  "rows_with_location_mentions": 0
+}

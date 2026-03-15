@@ -1,0 +1,64 @@
+{
+  "model": "scb10x/typhoon2.5-qwen3-4b",
+  "input": "wongnai-review-dataset\\review_dataset\\w_review_train.csv",
+  "sample_size": 3,
+  "success_count": 3,
+  "error_count": 0,
+  "parallel": 2,
+  "temperature": 0.0,
+  "num_ctx": 2048,
+  "keep_alive": "30m",
+  "latency_avg_sec": 4.398,
+  "latency_median_sec": 4.178,
+  "latency_max_sec": 5.532,
+  "rows_with_restaurant_name": 1,
+  "rows_with_food_nationality": 2,
+  "rows_with_food_type": 2,
+  "rows_with_ambience": 3,
+  "rows_with_price_level": 1,
+  "rows_with_location_mentions": 3,
+  "label_source_counts": {
+    "restaurant_name": {
+      "rule": 1,
+      "llm": 0,
+      "rule+llm": 0,
+      "default": 2
+    },
+    "venue_type": {
+      "rule": 2,
+      "llm": 1,
+      "rule+llm": 0,
+      "default": 0
+    },
+    "food_nationality": {
+      "rule": 0,
+      "llm": 0,
+      "rule+llm": 2,
+      "default": 1
+    },
+    "food_type": {
+      "rule": 0,
+      "llm": 0,
+      "rule+llm": 2,
+      "default": 1
+    },
+    "ambience": {
+      "rule": 1,
+      "llm": 0,
+      "rule+llm": 2,
+      "default": 0
+    },
+    "price_level": {
+      "rule": 1,
+      "llm": 0,
+      "rule+llm": 0,
+      "default": 2
+    },
+    "location_mentions": {
+      "rule": 0,
+      "llm": 0,
+      "rule+llm": 3,
+      "default": 0
+    }
+  }
+}

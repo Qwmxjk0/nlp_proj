@@ -1,0 +1,15 @@
+{
+  "input": "wongnai-review-dataset\\review_dataset\\w_review_train.csv",
+  "output_dir": "outputs\\ollama_labels",
+  "model": "scb10x/typhoon2.5-qwen3-4b",
+  "sample_size": 8,
+  "seed": 7,
+  "parallel": 2,
+  "temperature": 0.0,
+  "num_ctx": 2048,
+  "timeout": 600,
+  "keep_alive": "30m",
+  "limit_rows": 50,
+  "start_row": 0,
+  "base_url": "http://localhost:11434/api/chat"
+}

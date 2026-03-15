@@ -1,0 +1,20 @@
+{
+  "input": "wongnai-review-dataset\\review_dataset\\w_review_train.csv",
+  "output_dir": "outputs\\model_benchmarks\\20260315-232731\\scb10x__typhoon2.5-qwen3-4b",
+  "model": "scb10x/typhoon2.5-qwen3-4b",
+  "sample_size": 2,
+  "seed": 42,
+  "parallel": 2,
+  "temperature": 0.0,
+  "num_ctx": 2048,
+  "timeout": 600,
+  "keep_alive": "30m",
+  "limit_rows": 20,
+  "start_row": 0,
+  "base_url": "http://localhost:11434/api/chat",
+  "host_runtime": {
+    "hostname": "DataCooking",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.13.1"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "run": {
+    "started_at_epoch": 1773591461.215,
+    "finished_at_epoch": 1773591466.112,
+    "wall_time_sec": 4.897,
+    "hostname": "DataCooking",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python_version": "3.13.1",
+    "model": "scb10x/typhoon2.5-qwen3-4b",
+    "base_url": "http://localhost:11434/api/chat",
+    "parallel": 2,
+    "temperature": 0.0,
+    "num_ctx": 2048,
+    "keep_alive": "30m"
+  },
+  "counts": {
+    "requested_rows": 2,
+    "success_rows": 2,
+    "error_rows": 0
+  },
+  "tokens": {
+    "prompt_tokens_total": 2204,
+    "completion_tokens_total": 270,
+    "all_tokens_total": 2474
+  },
+  "throughput": {
+    "successful_rows_per_sec_wall": 0.408413,
+    "all_tokens_per_sec_wall": 505.20727,
+    "completion_tokens_per_sec_wall": 55.135797
+  }
+}

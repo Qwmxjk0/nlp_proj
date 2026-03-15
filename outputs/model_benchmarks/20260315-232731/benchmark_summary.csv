@@ -1,0 +1,2 @@
+﻿model,return_code,run_dir,wall_time_sec,success_rows,error_rows,latency_avg_sec,latency_median_sec,latency_max_sec,prompt_tokens_total,completion_tokens_total,all_tokens_total,completion_tokens_per_sec_run,all_tokens_per_sec_run,successful_rows_per_sec_wall,all_tokens_per_sec_wall
+scb10x/typhoon2.5-qwen3-4b,0,outputs\model_benchmarks\20260315-232731\scb10x__typhoon2.5-qwen3-4b\20260315-232731,6.461,2,0,5.16,5.16,6.208,2193,358,2551,102.956698,410.949525,0.321854,410.524622
